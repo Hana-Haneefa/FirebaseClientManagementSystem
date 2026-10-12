@@ -1,14 +1,41 @@
 import { useEffect, useState } from "react"; //useState for keep client data inside the component : useEffect use for start the db listener when component is loading
 
-import { collection, onSnapshot } from "firebase/firestore"; //collection is for reference 'clients' collection in firestore : onSnapshot for listent to db changes
+import {
+  collection,
+  onSnapshot,
+  addDoc,
+  serverTimestamp,
+} from "firebase/firestore"; //collection is for reference 'clients' collection in firestore : onSnapshot for listent to db changes : addDoc create new document in firestore
 
-import { db } from "../firebase";
+import { auth, db } from "../firebase";
+
+const statusStyles = {
+  Active: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20",
+  Lead: "bg-amber-500/10 text-amber-400 ring-amber-500/20",
+  Inactive: "bg-zinc-500/10 text-zinc-400 ring-zinc-500/20",
+};
+
+const emptyForm = {
+  name: "",
+  email: "",
+  phone: "",
+  company: "",
+  status: "Lead",
+};
+
+const inputClass =
+  "w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30";
 
 export default function Dashboard() {
   const [clients, setClients] = useState([]);
 
   const [loadingClients, setLoadingClients] = useState(true);
   const [error, setError] = useState("");
+
+  const [form, setForm] = useState({ ...emptyForm });
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
   //READ data from firestore
   useEffect(() => {
@@ -45,6 +72,69 @@ export default function Dashboard() {
     inactive: clients.filter((client) => client.status === "inactive").length,
   };
 
+  //ADD new client
+  function openCreate() {
+    setForm({ ...emptyForm });
+    setIsFormOpen(true);
+    setMessage("");
+    setError("");
+  }
+
+  //handle values user type
+  function handleChange(event) {
+    const { name, value } = event.target;
+
+    setForm((previousForm) => ({
+      ...previousForm,
+      [name]: value,
+    }));
+  }
+
+  //CREATE logic
+  async function handleSubmit(event) {
+    event.preventDefault(); //stop refreshing page after submiting the form
+
+    setError("");
+    setMessage("");
+
+    const user = auth.currentUser;
+
+    if (!user) {
+      setError("Please sign in before adding a client.");
+      return;
+    }
+
+    if (!form.name.trim()) {
+      setError("Client name is required.");
+      return;
+    }
+
+    setSaving(true);
+
+    const clientData = {
+      name: form.name.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim(),
+      company: form.company.trim(),
+      status: form.status.trim(),
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      await addDoc(collection(db, "clients"), clientData);
+
+      setMessage("Client added successfully!");
+      setForm({ ...emptyForm });
+      setIsFormOpen(false);
+    } catch (err) {
+      setError(`Failed to add client : ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       {/* Header */}
@@ -62,6 +152,7 @@ export default function Dashboard() {
 
           <button
             type="button"
+            onClick={openCreate}
             className="rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-400"
           >
             + Add client
@@ -234,6 +325,148 @@ export default function Dashboard() {
           </div>
         </section>
       </main>
+
+      {isFormOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-6">
+          <div className="my-auto w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-zinc-50">
+              Add new client
+            </h2>
+
+            <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+              <div>
+                <label
+                  htmlFor="client-name"
+                  className="mb-1.5 block text-sm font-medium text-zinc-300"
+                >
+                  Name *
+                </label>
+
+                <input
+                  id="client-name"
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
+                  required
+                  maxLength={100}
+                  placeholder="Full name"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="client-email"
+                  className="mb-1.5 block text-sm font-medium text-zinc-300"
+                >
+                  Email
+                </label>
+
+                <input
+                  id="client-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  value={form.email}
+                  onChange={handleChange}
+                  placeholder="client@example.com"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="client-phone"
+                  className="mb-1.5 block text-sm font-medium text-zinc-300"
+                >
+                  Phone
+                </label>
+
+                <input
+                  id="client-phone"
+                  name="phone"
+                  type="tel"
+                  value={form.phone}
+                  onChange={handleChange}
+                  placeholder="+94 77 123 4567"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="client-company"
+                  className="mb-1.5 block text-sm font-medium text-zinc-300"
+                >
+                  Company
+                </label>
+
+                <input
+                  id="client-company"
+                  name="company"
+                  value={form.company}
+                  onChange={handleChange}
+                  placeholder="Company name"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="client-status"
+                  className="mb-1.5 block text-sm font-medium text-zinc-300"
+                >
+                  Status
+                </label>
+
+                <select
+                  id="client-status"
+                  name="status"
+                  value={form.status}
+                  onChange={handleChange}
+                  className={inputClass}
+                >
+                  <option value="Lead">Lead</option>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </div>
+
+              {error && (
+                <p
+                  role="alert"
+                  className="rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-300"
+                >
+                  {error}
+                </p>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFormOpen(false);
+                    setForm({ ...EMPTY_FORM });
+                    setError("");
+                  }}
+                  disabled={saving}
+                  className="rounded-lg border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-400 disabled:opacity-60"
+                >
+                  {saving ? "Saving..." : "Add client"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
