@@ -6,6 +6,7 @@ import {
   addDoc,
   serverTimestamp,
   updateDoc,
+  deleteDoc,
   doc,
 } from "firebase/firestore"; //collection is for reference 'clients' collection in firestore : onSnapshot for listent to db changes : addDoc create new document in firestore : updateDoc for update selected doc : doc is for identify the document that should be updated
 
@@ -181,6 +182,29 @@ export default function Dashboard() {
       setError(`Failed to add client : ${err.message}`);
     } finally {
       setSaving(false);
+    }
+  }
+
+
+  //DELETE logic
+  async function handleDelete(client) {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${client.name}?`
+    );
+
+    if(!confirmed) return;
+
+    setError("")
+    setMessage("")
+
+    try{
+      await deleteDoc(
+        doc(db, "clients", client.id)
+      );
+
+      setMessage('Client deleted successfully!')
+    }catch(err){
+      setError(`Failed to delete client: ${err.message}`)
     }
   }
 
@@ -371,6 +395,7 @@ export default function Dashboard() {
 
                           <button
                             type="button"
+                            onClick={()=> handleDelete(client)}
                             className="rounded-md border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10"
                           >
                             Delete
