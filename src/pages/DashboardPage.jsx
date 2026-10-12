@@ -5,7 +5,9 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
-} from "firebase/firestore"; //collection is for reference 'clients' collection in firestore : onSnapshot for listent to db changes : addDoc create new document in firestore
+  updateDoc,
+  doc,
+} from "firebase/firestore"; //collection is for reference 'clients' collection in firestore : onSnapshot for listent to db changes : addDoc create new document in firestore : updateDoc for update selected doc : doc is for identify the document that should be updated
 
 import { auth, db } from "../firebase";
 
@@ -31,11 +33,25 @@ export default function Dashboard() {
 
   const [loadingClients, setLoadingClients] = useState(true);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   const [form, setForm] = useState({ ...emptyForm });
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+
+  const [editingId, setEditingId] = useState(null);
+
+  //make success message to dissapear after few mins
+  useEffect(() => {
+    if (!message) return;
+
+    const timer = setTimeout(() => {
+      setMessage("");
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [message]);
 
   //READ data from firestore
   useEffect(() => {
@@ -53,7 +69,7 @@ export default function Dashboard() {
       },
 
       (err) => {
-        setError(err.message);
+        setLoadError(err.message);
         setLoadingClients(false);
       },
     );
@@ -69,7 +85,7 @@ export default function Dashboard() {
 
     leads: clients.filter((client) => client.status === "Lead").length,
 
-    inactive: clients.filter((client) => client.status === "inactive").length,
+    inactive: clients.filter((client) => client.status === "Inactive").length,
   };
 
   //ADD new client
@@ -80,7 +96,7 @@ export default function Dashboard() {
     setError("");
   }
 
-  //handle values user type
+  //handle value changes user type
   function handleChange(event) {
     const { name, value } = event.target;
 
@@ -90,7 +106,24 @@ export default function Dashboard() {
     }));
   }
 
-  //CREATE logic
+  //EDIT client info
+  function openEdit(client) {
+    setEditingId(client.id);
+
+    setForm({
+      name: client.name ?? "",
+      email: client.email ?? "",
+      phone: client.phone ?? "",
+      company: client.company ?? "",
+      status: client.status ?? "",
+    });
+
+    setIsFormOpen(true);
+    setError("");
+    setMessage("");
+  }
+
+  //SUBMIT logic
   async function handleSubmit(event) {
     event.preventDefault(); //stop refreshing page after submiting the form
 
@@ -123,10 +156,26 @@ export default function Dashboard() {
     };
 
     try {
-      await addDoc(collection(db, "clients"), clientData);
+      // await addDoc(collection(db, "clients"), clientData);- this creates a new record every time
 
-      setMessage("Client added successfully!");
+      if (editingId) {
+        //UPDATE exsisting client if editing ID is already in firestore
+        await updateDoc(doc(db, "clients", editingId), clientData);
+
+        setMessage("Client updated successfully!");
+      } else {
+        //CREATE new client
+        await addDoc(collection(db, "clients"), {
+          ...clientData,
+          createdBy: user.uid,
+          createdAt: serverTimestamp(),
+        });
+
+        setMessage("Client added successfully!");
+      }
+
       setForm({ ...emptyForm });
+      setEditingId(null);
       setIsFormOpen(false);
     } catch (err) {
       setError(`Failed to add client : ${err.message}`);
@@ -161,6 +210,16 @@ export default function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+        {/* messages */}
+        {message && (
+          <p
+            role="status"
+            className="rounded-lg border border-emerald-900 bg-emerald-950/50 p-3 text-sm text-emerald-300"
+          >
+            {message}
+          </p>
+        )}
+
         {/* Dashboard Statistics */}
         <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
@@ -240,13 +299,13 @@ export default function Dashboard() {
                       Loading clients...
                     </td>
                   </tr>
-                ) : error ? (
+                ) : loadError ? (
                   <tr>
                     <td
                       colSpan={5}
                       className="px-5 py-12 text-center text-red-400"
                     >
-                      Failed to load clients : {error}
+                      Failed to load clients : {loadError}
                     </td>
                   </tr>
                 ) : clients.length === 0 ? (
@@ -304,6 +363,7 @@ export default function Dashboard() {
                         <div className="flex justify-end gap-2">
                           <button
                             type="button"
+                            onClick={() => openEdit(client)}
                             className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
                           >
                             Edit
@@ -330,7 +390,7 @@ export default function Dashboard() {
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-6">
           <div className="my-auto w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
             <h2 className="text-lg font-semibold text-zinc-50">
-              Add new client
+              {editingId ? "Edit client" : "Add new client"}
             </h2>
 
             <form onSubmit={handleSubmit} className="mt-5 space-y-4">
@@ -446,7 +506,8 @@ export default function Dashboard() {
                   type="button"
                   onClick={() => {
                     setIsFormOpen(false);
-                    setForm({ ...EMPTY_FORM });
+                    setForm({ ...emptyForm });
+                    setEditingId(null);
                     setError("");
                   }}
                   disabled={saving}
@@ -460,7 +521,11 @@ export default function Dashboard() {
                   disabled={saving}
                   className="rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-400 disabled:opacity-60"
                 >
-                  {saving ? "Saving..." : "Add client"}
+                  {saving
+                    ? "Saving..."
+                    : editingId
+                      ? "Update Client"
+                      : "Add client"}
                 </button>
               </div>
             </form>
